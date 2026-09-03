@@ -157,12 +157,22 @@ export default function AdminDashboard() {
     return () => clearInterval(timer);
   }, [job, selected]);
 
+  // Sync Drive state: inline folder-ID override when event has none stored.
+  const [syncFolderInput, setSyncFolderInput] = useState("");
+
   async function onSyncDrive() {
     if (!selected) return;
     setError(null);
+    const driveId =
+      syncFolderInput.trim() || selected.drive_folder_id || undefined;
+    if (!driveId) {
+      setError("Enter a Google Drive Folder ID to sync.");
+      return;
+    }
     try {
-      const created = await adminSyncDrive(selected.id);
+      const created = await adminSyncDrive(selected.id, driveId);
       setJob(created);
+      setSyncFolderInput("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Drive sync failed.");
     }
@@ -308,16 +318,29 @@ export default function AdminDashboard() {
                   </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
-                  {selected.drive_folder_id && (
+                  {/* Sync Photos — always visible; shows input when no folder linked */}
+                  <div className="flex flex-col gap-1.5">
+                    {!selected.drive_folder_id && (
+                      <input
+                        placeholder="Drive Folder ID to sync"
+                        value={syncFolderInput}
+                        onChange={(e) => setSyncFolderInput(e.target.value)}
+                        className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm"
+                      />
+                    )}
                     <button
                       type="button"
                       onClick={onSyncDrive}
                       className="whitespace-nowrap rounded-lg border border-brand px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand/5"
-                      title={`Sync from Drive folder ${selected.drive_folder_id}`}
+                      title={
+                        selected.drive_folder_id
+                          ? `Sync from Drive folder ${selected.drive_folder_id}`
+                          : "Sync from Google Drive"
+                      }
                     >
-                      Sync Photos
+                      Sync Photos 🔄
                     </button>
-                  )}
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowShare(true)}
