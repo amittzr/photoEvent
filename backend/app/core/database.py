@@ -95,6 +95,18 @@ def _ensure_columns() -> None:
             FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE;
         END $$;
         """,
+        """
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE constraint_name = 'upload_jobs_folder_id_fkey'
+          ) THEN
+            ALTER TABLE upload_jobs DROP CONSTRAINT upload_jobs_folder_id_fkey;
+          END IF;
+          ALTER TABLE upload_jobs ADD CONSTRAINT upload_jobs_folder_id_fkey
+            FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE;
+        END $$;
+        """,
     ]
     for stmt in fk_stmts:
         with engine.begin() as conn:
