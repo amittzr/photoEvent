@@ -65,8 +65,8 @@ class Settings(BaseSettings):
     THUMBNAIL_WEBP_QUALITY: int = 75
 
     # --- Bulk ZIP upload ---
-    # Temp dir for streamed ZIP extraction and worker parallelism.
-    ZIP_TMP_DIR: str = "/app/data/tmp"
+    # Use /tmp as default since it always exists (even without a persistent disk).
+    ZIP_TMP_DIR: str = "/tmp/photoevent"
     ZIP_MAX_WORKERS: int = 4
 
 

@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="photoEvent API",
         # Bump on deploys so /openapi.json confirms the running build.
-        version="1.7.0-fix-fk-cascade-zip-tmp",
+        version="1.8.0-zip-fix",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
@@ -85,7 +85,7 @@ def create_app() -> FastAPI:
 
         return {
             "status": "ok",
-            "version": "1.7.0-lazy-storage",
+            "version": "1.8.0-zip-fix",
             "init_error": db.LAST_INIT_ERROR,
         }
 
