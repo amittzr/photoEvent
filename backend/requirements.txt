@@ -1,0 +1,37 @@
+# --- Web framework ---
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+python-multipart==0.0.17
+
+# --- Data / ORM ---
+sqlmodel==0.0.22
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+pgvector==0.3.6
+alembic==1.14.0
+
+# --- Config & validation ---
+pydantic==2.10.3
+pydantic-settings==2.6.1
+
+# --- Auth ---
+# Pin bcrypt to 4.0.x: passlib 1.7.4's backend-detection probe is incompatible
+# with bcrypt >= 4.1 (raises "password cannot be longer than 72 bytes").
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
+
+# --- Storage (Google Drive API) ---
+google-api-python-client==2.149.0
+google-auth==2.35.0
+google-auth-httplib2==0.2.0
+# OAuth user-delegation flow (upload under a real user's Drive quota).
+google-auth-oauthlib==1.2.1
+
+# --- Image processing & face recognition ---
+Pillow==11.0.0
+numpy==1.26.4
+# InsightFace is the primary engine (512-d embeddings). onnxruntime powers inference.
+insightface==0.7.3
+onnxruntime==1.20.1
+opencv-python-headless==4.10.0.84

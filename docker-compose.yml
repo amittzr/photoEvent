@@ -1,0 +1,50 @@
+services:
+  db:
+    # pgvector/pgvector ships PostgreSQL with the pgvector extension preinstalled.
+    image: pgvector/pgvector:pg16
+    container_name: photoevent_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-photoevent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-photoevent}
+      POSTGRES_DB: ${POSTGRES_DB:-photoevent}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/scripts/init_pgvector.sql:/docker-entrypoint-initdb.d/init_pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-photoevent} -d ${POSTGRES_DB:-photoevent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: photoevent_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override host so the API reaches the db service on the compose network.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-photoevent}:${POSTGRES_PASSWORD:-photoevent}@db:5432/${POSTGRES_DB:-photoevent}
+    ports:
+      - "8000:8000"
+    volumes:
+      # The Google Drive service-account key is expected at
+      # ./backend/google-credentials.json and is mounted via this bind.
+      - ./backend:/app
+      # Persistent local disk for the WebP thumbnail cache and ZIP temp files.
+      - appdata:/app/data
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  pgdata:
+  appdata:

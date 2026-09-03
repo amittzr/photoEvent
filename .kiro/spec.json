@@ -1,0 +1,39 @@
+{
+  "name": "photoEvent",
+  "version": "1.0.0",
+  "description": "Production-ready event photo-sharing web app with AI-powered facial recognition. Guests find their photos by uploading a selfie; admins manage events, folders, and bulk uploads.",
+  "architecture": {
+    "style": "Clean Architecture (Routers -> Services -> Repositories -> Models)",
+    "backend": {
+      "framework": "FastAPI",
+      "language": "Python 3.10+",
+      "orm": "SQLModel (SQLAlchemy core)",
+      "migrations": "Alembic",
+      "database": "PostgreSQL 16 + pgvector",
+      "storage": "Google Drive API (google-api-python-client)",
+      "face_engine": "InsightFace (buffalo_l, 512-d embeddings) with fallback to face_recognition (128-d)",
+      "background_tasks": "FastAPI BackgroundTasks (upgradeable to Celery/RQ)"
+    },
+    "frontend": {
+      "framework": "Next.js (App Router)",
+      "language": "TypeScript",
+      "styling": "Tailwind CSS",
+      "state": "React hooks + TanStack Query",
+      "design": "Mobile-first, minimal, masonry gallery + lightbox"
+    }
+  },
+  "layers": {
+    "routers": "HTTP endpoints, request/response validation, auth guards",
+    "services": "Business logic: auth, events, storage, face recognition, upload orchestration",
+    "repositories": "DB access layer, isolates SQL/ORM from services",
+    "schemas": "Pydantic request/response DTOs",
+    "models": "SQLModel ORM entities mapped to tables"
+  },
+  "api_groups": {
+    "admin": ["POST /api/auth/login", "GET /api/admin/events", "POST /api/admin/events", "PATCH /api/admin/events/{id}", "DELETE /api/admin/events/{id}", "POST /api/admin/events/{id}/folders", "POST /api/admin/folders/{id}/photos"],
+    "guest": ["GET /api/e/{slug}", "GET /api/e/{slug}/folders/{folder_id}/photos", "POST /api/e/{slug}/search", "GET /api/photos/{id}/download"]
+  },
+  "privacy": {
+    "guest_selfie": "Processed in-memory only; never persisted to disk or cloud. Embedding discarded after search."
+  }
+}

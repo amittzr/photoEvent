@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.json.key
+google-credentials.json
+gcs-service-account.json
+oauth-client-secrets.json
+oauth-token.json
+.venv/
+venv/

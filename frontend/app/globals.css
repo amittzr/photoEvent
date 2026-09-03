@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+}
+
+/* Masonry columns using CSS multi-column layout. */
+.masonry {
+  column-gap: 0.75rem;
+  columns: 2;
+}
+@media (min-width: 640px) {
+  .masonry { columns: 3; }
+}
+@media (min-width: 1024px) {
+  .masonry { columns: 4; }
+}
+.masonry > * {
+  break-inside: avoid;
+  margin-bottom: 0.75rem;
+}
