@@ -48,7 +48,14 @@ class Settings(BaseSettings):
     FACE_SEARCH_TOP_K: int = 200
 
     # --- App ---
+    # Comma-separated list of allowed frontend origins for CORS, e.g.
+    # "http://localhost:3000,https://photo-event-six.vercel.app".
     FRONTEND_ORIGIN: str = "http://localhost:3000"
+
+    @property
+    def frontend_origins(self) -> list[str]:
+        """Parse FRONTEND_ORIGIN into a list of trimmed, non-empty origins."""
+        return [o.strip() for o in self.FRONTEND_ORIGIN.split(",") if o.strip()]
 
     # --- Thumbnails (local WebP cache) ---
     # Thumbnails are generated as WebP and cached on a local disk volume for

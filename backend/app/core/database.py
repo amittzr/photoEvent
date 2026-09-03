@@ -36,4 +36,23 @@ def init_db() -> None:
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
+    # create_all only creates MISSING tables; it never alters existing ones.
     SQLModel.metadata.create_all(engine)
+
+    # Lightweight, idempotent column backfills for tables that predate a column.
+    # This keeps deployments where migrations didn't run (e.g. Neon) self-healing
+    # without dropping data. Each statement is a no-op if the column exists.
+    _ensure_columns()
+
+
+def _ensure_columns() -> None:
+    """Add columns that may be missing on pre-existing tables (idempotent)."""
+    statements = [
+        # events.drive_folder_id (added for linking an existing Drive folder).
+        "ALTER TABLE events ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR",
+        # photos.drive_thumb_id became nullable; ensure the column exists.
+        "ALTER TABLE photos ADD COLUMN IF NOT EXISTS drive_thumb_id VARCHAR",
+    ]
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))

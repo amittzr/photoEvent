@@ -41,10 +41,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS: allow the configured frontend origin.
+    # CORS: allow the configured frontend origin(s). Supports a comma-separated
+    # list (e.g. localhost for dev + the deployed Vercel URL). Also allow any
+    # *.vercel.app preview deployment via a regex so preview builds work too.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_ORIGIN],
+        allow_origins=settings.frontend_origins,
+        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
