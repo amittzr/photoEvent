@@ -20,7 +20,7 @@ class Face(SQLModel, table=True):
     # Denormalized event_id so vector search can be scoped without a join.
     event_id: uuid.UUID = Field(foreign_key="events.id", index=True, nullable=False)
 
-    # pgvector column; dimension comes from settings (512 InsightFace / 128 fallback).
+    # pgvector column; 128-d (dlib face_recognition).
     embedding: list[float] = Field(
         sa_column=Column(Vector(settings.FACE_EMBEDDING_DIM), nullable=False)
     )

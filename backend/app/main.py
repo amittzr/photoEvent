@@ -16,17 +16,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Application startup/shutdown.
-
-    On startup, ensure the pgvector extension and all tables exist. This makes
-    the app self-healing on databases where migrations haven't run (e.g. a fresh
-    Neon PostgreSQL instance) without dropping any existing data.
-    """
+    import app.core.database as db
     try:
         init_db()
-        logger.info("Database initialized (tables ensured).")
-    except Exception:  # noqa: BLE001
-        # Don't crash the whole app if init fails; log so it's visible in logs.
+        db.LAST_INIT_ERROR = None
+        logger.info("Database initialized successfully.")
+    except Exception as exc:  # noqa: BLE001
+        db.LAST_INIT_ERROR = f"{type(exc).__name__}: {exc}"
         logger.exception("Database initialization failed on startup.")
     yield
 
@@ -35,15 +31,17 @@ def create_app() -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(
         title="photoEvent API",
-        version="1.0.0",
+        version="2.0.0",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
 
-    # CORS: allow the configured frontend origin.
+    # CORS: allow comma-separated FRONTEND_ORIGIN list plus any *.vercel.app
+    # preview deployment, so both localhost and Vercel prod/preview work.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_ORIGIN],
+        allow_origins=settings.frontend_origins,
+        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -70,9 +68,14 @@ def create_app() -> FastAPI:
     app.include_router(guest.router)
 
     @app.get("/health", tags=["meta"])
-    def health() -> dict[str, str]:
-        """Simple liveness probe."""
-        return {"status": "ok"}
+    def health() -> dict:
+        """Liveness probe — also shows DB init error and version."""
+        import app.core.database as db
+        return {
+            "status": "ok",
+            "version": "2.0.0",
+            "init_error": getattr(db, "LAST_INIT_ERROR", None),
+        }
 
     return app
 

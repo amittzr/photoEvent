@@ -42,24 +42,30 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""
 
     # --- Face recognition ---
-    FACE_ENGINE: str = "insightface"  # "insightface" | "face_recognition"
-    FACE_EMBEDDING_DIM: int = 512
+    # face_recognition (dlib ResNet, 128-d, ~80MB RAM).
+    # Replaces InsightFace (512-d, ~400MB) to fit Render's free 512MB tier.
+    FACE_ENGINE: str = "face_recognition"
+    FACE_EMBEDDING_DIM: int = 128
     FACE_MATCH_THRESHOLD: float = 0.45
     FACE_SEARCH_TOP_K: int = 200
 
     # --- App ---
+    # Comma-separated list of allowed frontend origins for CORS.
+    # e.g. "http://localhost:3000,https://photo-event-six.vercel.app"
     FRONTEND_ORIGIN: str = "http://localhost:3000"
 
+    @property
+    def frontend_origins(self) -> list[str]:
+        """Parse FRONTEND_ORIGIN into a list of trimmed origins."""
+        return [o.strip() for o in self.FRONTEND_ORIGIN.split(",") if o.strip()]
+
     # --- Thumbnails (local WebP cache) ---
-    # Thumbnails are generated as WebP and cached on a local disk volume for
-    # instant serving; originals still go to Google Drive.
     THUMBNAIL_DIR: str = "/app/data/thumbnails"
     THUMBNAIL_MAX_EDGE: int = 600
     THUMBNAIL_WEBP_QUALITY: int = 75
 
     # --- Bulk ZIP upload ---
-    # Temp dir for streamed ZIP extraction and worker parallelism.
-    ZIP_TMP_DIR: str = "/app/data/tmp"
+    ZIP_TMP_DIR: str = "/tmp/photoevent"
     ZIP_MAX_WORKERS: int = 4
 
 

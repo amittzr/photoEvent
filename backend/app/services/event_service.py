@@ -125,24 +125,30 @@ class EventService:
             raise HTTPException(status_code=404, detail="Folder not found.")
 
         if cascade:
-            # Build cleanup services lazily so listing/renaming never needs Drive.
-            thumbnails = ThumbnailService()
-            storage = None
-            photos = self.photo_repo.all_for_folder(folder_id)
-            for photo in photos:
-                # Remove the local WebP thumbnail cache (best-effort).
-                thumbnails.delete(photo.id)
-                # Remove the Drive original (best-effort; don't block DB delete).
-                if photo.drive_original_id:
+            # Best-effort cleanup — NEVER let external failures block the DB delete.
+            try:
+                thumbnails = ThumbnailService()
+                storage = None
+                photos = self.photo_repo.all_for_folder(folder_id)
+                for photo in photos:
                     try:
-                        if storage is None:
-                            from app.services.storage_service import StorageService
-
-                            storage = StorageService()
-                        storage.delete_file(photo.drive_original_id)
+                        thumbnails.delete(photo.id)
                     except Exception:
-                        # Leave a Drive orphan rather than failing the whole delete.
                         pass
+                    if photo.drive_original_id:
+                        try:
+                            if storage is None:
+                                from app.services.storage_service import StorageService
+                                storage = StorageService()
+                            storage.delete_file(photo.drive_original_id)
+                        except Exception:
+                            pass
+            except Exception:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Cascade cleanup failed for folder %s; continuing with DB delete.",
+                    folder_id, exc_info=True,
+                )
 
-        # Deleting the folder cascades to photos + faces at the DB level.
+        # DB cascade (ondelete=CASCADE) removes photos + faces automatically.
         self.folder_repo.delete(folder)

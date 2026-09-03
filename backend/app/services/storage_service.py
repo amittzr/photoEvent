@@ -1,4 +1,4 @@
-"""Google Drive storage manager service.
+﻿"""Google Drive storage manager service.
 
 Supports two authentication modes (settings.DRIVE_AUTH_MODE):
 
@@ -113,20 +113,27 @@ def _build_credentials():
 class StorageService:
     """Google Drive-backed storage manager.
 
-    The public method surface mirrors the previous GCS manager so callers only
-    need minor changes: ``upload_bytes`` returns a Drive file ID (used where the
-    code previously stored an object path), ``public_url`` returns a directly
-    viewable link, and ``download_bytes`` streams the file back.
+    Credentials are built lazily on the first Drive API call so constructing
+    StorageService never raises at DI time â€” StorageError only surfaces when
+    an actual Drive operation is attempted.
     """
 
     def __init__(self) -> None:
-        credentials = _build_credentials()
-        # cache_discovery=False avoids noisy warnings and filesystem cache writes.
-        self._service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        # Service built lazily via _get_service() to avoid raising StorageError
+        # at dependency-injection time when OAuth token is absent.
+        self._svc = None
         self._root_folder_id = settings.GOOGLE_DRIVE_ROOT_FOLDER_ID
-        # Cache of "path" -> Drive folder ID to avoid repeated API lookups.
         self._folder_cache: dict[str, str] = {}
         self._cache_lock = threading.Lock()
+
+    def _get_service(self):
+        """Build (or return cached) the authenticated Drive service client."""
+        if self._svc is None:
+            credentials = _build_credentials()
+            self._svc = build(
+                "drive", "v3", credentials=credentials, cache_discovery=False
+            )
+        return self._svc
 
     # ------------------------------------------------------------------ #
     # Folder management
@@ -147,7 +154,7 @@ class StorageService:
         }
         try:
             created = (
-                self._service.files()
+                self._get_service().files()
                 .create(body=metadata, fields="id", supportsAllDrives=True)
                 .execute()
             )
@@ -165,7 +172,7 @@ class StorageService:
         )
         try:
             response = (
-                self._service.files()
+                self._get_service().files()
                 .list(
                     q=query,
                     spaces="drive",
@@ -225,7 +232,7 @@ class StorageService:
         )
         try:
             created = (
-                self._service.files()
+                self._get_service().files()
                 .create(
                     body=metadata,
                     media_body=media,
@@ -266,7 +273,7 @@ class StorageService:
     def delete_file(self, file_id: str) -> None:
         """Delete a file from Google Drive. Missing files are treated as success."""
         try:
-            self._service.files().delete(
+            self._get_service().files().delete(
                 fileId=file_id, supportsAllDrives=True
             ).execute()
         except HttpError as exc:
@@ -279,7 +286,7 @@ class StorageService:
     def _grant_public_read(self, file_id: str) -> None:
         """Grant the 'anyone' role reader permission on a file."""
         try:
-            self._service.permissions().create(
+            self._get_service().permissions().create(
                 fileId=file_id,
                 body={"type": "anyone", "role": "reader"},
                 fields="id",
@@ -303,7 +310,7 @@ class StorageService:
 
     def get_file_stream(self, file_id: str) -> bytes:
         """Download a Drive file's bytes."""
-        request = self._service.files().get_media(
+        request = self._get_service().files().get_media(
             fileId=file_id, supportsAllDrives=True
         )
         buffer = io.BytesIO()
@@ -331,3 +338,4 @@ def _wrap_http_error(exc: HttpError, action: str) -> StorageError:
         f"Google Drive failed to {action}: {reason}",
         upstream_status=int(status) if status else None,
     )
+
