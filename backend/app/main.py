@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="photoEvent API",
         # Bump on deploys so /openapi.json confirms the running build.
-        version="1.9.0-zip-logging",
+        version="1.9.0-no-face-in-bulk",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
