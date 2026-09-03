@@ -460,16 +460,16 @@ export default function AdminDashboard() {
                   Import ZIP from Google Drive ⭐
                 </h3>
                 <p className="mb-2 text-xs text-neutral-500">
-                  Already have a ZIP in Drive? Paste its file ID and the server
-                  downloads it directly — no browser upload, no 30s timeout.
+                  Already have a ZIP in Drive? Paste its file ID or full URL
+                  and the server downloads it directly — no browser upload, no 30s timeout.
                 </p>
                 <p className="mb-3 text-xs text-neutral-400">
-                  Get the ID from the Drive file URL:
-                  drive.google.com/file/d/<strong>FILE_ID</strong>/view
+                  Right-click the ZIP in Drive → Share → Copy link, then paste the
+                  whole link here.
                 </p>
                 <form onSubmit={onUploadZipFromDrive} className="flex gap-2">
                   <input
-                    placeholder="Drive file ID (e.g. 1ABC123...)"
+                    placeholder="Drive file ID or full Drive URL"
                     value={driveZipId}
                     onChange={(e) => setDriveZipId(e.target.value)}
                     className="flex-1 rounded-lg border px-3 py-2 text-sm"

@@ -32,6 +32,13 @@ def process_drive_zip_job(
     job_id: uuid.UUID, drive_file_id: str, work_dir: str
 ) -> None:
     """Background: download ZIP from Drive then hand off to process_zip_job."""
+    # Accept either a raw file ID or a full Drive URL — extract the ID.
+    import re as _re
+    url_match = _re.search(r"/d/([a-zA-Z0-9_-]+)", drive_file_id)
+    if url_match:
+        drive_file_id = url_match.group(1)
+        log.info("[drive_zip job=%s] extracted file ID from URL: %s", job_id, drive_file_id)
+
     log.info("[drive_zip job=%s] starting — drive_file_id=%s", job_id, drive_file_id)
 
     with Session(engine) as session:
