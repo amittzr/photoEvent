@@ -1,13 +1,10 @@
 FROM python:3.11-slim
 
-# Build dependencies for dlib (face_recognition backend).
-# dlib compiles from source and needs cmake + C++ toolchain.
-# libX11 / libopenblas are pulled in by dlib's optional image/BLAS support.
+# Minimal runtime dependencies only — no C++ build tools needed because
+# dlib is installed from a pre-built binary wheel below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    libopenblas-dev \
-    liblapack-dev \
+    libglib2.0-0 \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
@@ -16,9 +13,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# Install dlib from a pre-built wheel — skips C++ compilation (~10 min saved).
+# Wheel source: https://github.com/alvinregin/dlib-wheels (MIT-compatible).
+RUN pip install --upgrade pip && \
+    pip install https://github.com/alvinregin/dlib-wheels/releases/download/v20.0.0/dlib-20.0.0-cp311-cp311-linux_x86_64.whl
+
 COPY requirements.txt .
-# dlib takes several minutes to compile — it is the bottleneck in this layer.
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install -r requirements.txt
 
 COPY . .
 
