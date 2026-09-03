@@ -12,6 +12,7 @@ import {
   adminRenameFolder,
   adminUploadPhotos,
   adminUploadZip,
+  adminUploadZipFromDrive,
   clearToken,
   getEvent,
   getToken,
@@ -40,6 +41,10 @@ export default function AdminDashboard() {
   // ZIP bulk-upload state.
   const [zipUploading, setZipUploading] = useState(false);
   const [job, setJob] = useState<UploadJob | null>(null);
+
+  // Drive ZIP state — user provides a Drive file ID, no browser upload needed.
+  const [driveZipId, setDriveZipId] = useState("");
+  const [driveZipLoading, setDriveZipLoading] = useState(false);
 
   // Folder edit/delete + share modal state.
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -172,6 +177,22 @@ export default function AdminDashboard() {
       if (selected) await openEvent(selected.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete folder.");
+    }
+  }
+
+  async function onUploadZipFromDrive(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected || !driveZipId.trim()) return;
+    setDriveZipLoading(true);
+    setError(null);
+    try {
+      const created = await adminUploadZipFromDrive(selected.id, driveZipId.trim());
+      setJob(created);
+      setDriveZipId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drive ZIP failed.");
+    } finally {
+      setDriveZipLoading(false);
     }
   }
 
@@ -431,6 +452,37 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 )}
+              </div>
+
+              {/* Process ZIP from Google Drive ⭐ — no upload timeout */}
+              <div className="rounded-xl bg-white p-5 shadow-sm">
+                <h3 className="mb-1 font-semibold">
+                  Import ZIP from Google Drive ⭐
+                </h3>
+                <p className="mb-2 text-xs text-neutral-500">
+                  Already have a ZIP in Drive? Paste its file ID and the server
+                  downloads it directly — no browser upload, no 30s timeout.
+                </p>
+                <p className="mb-3 text-xs text-neutral-400">
+                  Get the ID from the Drive file URL:
+                  drive.google.com/file/d/<strong>FILE_ID</strong>/view
+                </p>
+                <form onSubmit={onUploadZipFromDrive} className="flex gap-2">
+                  <input
+                    placeholder="Drive file ID (e.g. 1ABC123...)"
+                    value={driveZipId}
+                    onChange={(e) => setDriveZipId(e.target.value)}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={driveZipLoading}
+                    className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    {driveZipLoading ? "Starting…" : "Import"}
+                  </button>
+                </form>
               </div>
             </div>
           )}

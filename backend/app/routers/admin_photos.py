@@ -1,4 +1,5 @@
 """Admin router for bulk photo uploads."""
+import logging
 import os
 import uuid
 from typing import Annotated
@@ -21,10 +22,12 @@ from app.repositories.event_repository import EventRepository
 from app.repositories.folder_repository import FolderRepository
 from app.schemas.job import UploadJobOut
 from app.schemas.photo import PhotoOut, UploadResult
+from app.services.drive_zip_service import process_drive_zip_job
 from app.services.upload_service import UploadService
 from app.services.zip_upload_service import process_zip_job
 
 router = APIRouter(prefix="/api/admin", tags=["admin:photos"])
+log = logging.getLogger("admin_photos")
 
 UploadServiceDep = Annotated[UploadService, Depends(get_upload_service)]
 
@@ -145,6 +148,69 @@ async def upload_zip(
     # Schedule background processing (extract + parallel workers).
     background.add_task(process_zip_job, job_id, zip_path, work_dir)
 
+    return UploadJobOut.model_validate(job)
+
+
+@router.post(
+    "/events/{event_id}/upload-zip-from-drive",
+    response_model=UploadJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def upload_zip_from_drive(
+    _: AdminDep,
+    event_id: uuid.UUID,
+    session: SessionDep,
+    background: BackgroundTasks,
+    drive_file_id: str,
+    folder_id: uuid.UUID | None = None,
+) -> UploadJobOut:
+    """Process a ZIP already in Google Drive — no HTTP upload, no timeout.
+
+    Upload your ZIP to Google Drive, get its file ID, and pass it here.
+    The server downloads the ZIP directly from Drive and processes it
+    exactly like a local ZIP upload.
+    """
+    import tempfile
+
+    event = EventRepository(session).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+
+    folder_repo = FolderRepository(session)
+    if folder_id is not None:
+        folder = folder_repo.get(folder_id)
+        if not folder or folder.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+    else:
+        existing = [f for f in folder_repo.list_for_event(event_id)
+                    if f.name == "Uploads"]
+        folder = existing[0] if existing else folder_repo.create(
+            Folder(event_id=event_id, name="Uploads")
+        )
+
+    base_tmp = settings.ZIP_TMP_DIR
+    try:
+        os.makedirs(base_tmp, exist_ok=True)
+    except OSError:
+        base_tmp = tempfile.gettempdir()
+
+    job_id = uuid.uuid4()
+    work_dir = os.path.join(base_tmp, str(job_id))
+    os.makedirs(work_dir, exist_ok=True)
+
+    job = UploadJob(
+        id=job_id,
+        event_id=event_id,
+        folder_id=folder.id,
+        status=JobStatus.PENDING,
+        message=f"Queued: downloading ZIP from Drive file {drive_file_id}",
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background.add_task(process_drive_zip_job, job_id, drive_file_id, work_dir)
+    log.info("[upload_zip_from_drive] job=%s drive_file_id=%s", job_id, drive_file_id)
     return UploadJobOut.model_validate(job)
 
 
