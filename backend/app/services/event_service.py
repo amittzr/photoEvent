@@ -91,6 +91,7 @@ class EventService:
             title=event.title,
             slug=event.slug,
             event_date=event.event_date,
+            drive_folder_id=event.drive_folder_id,
             created_at=event.created_at,
             folders=folders,
         )
