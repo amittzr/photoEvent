@@ -23,6 +23,7 @@ from app.repositories.folder_repository import FolderRepository
 from app.schemas.job import DriveSyncRequest, UploadJobOut
 from app.schemas.photo import PhotoOut, UploadResult
 from app.services.drive_sync_service import sync_drive_folder_job
+from app.services.drive_zip_service import process_drive_zip_job
 from app.services.upload_service import UploadService
 from app.services.zip_upload_service import process_zip_job
 
@@ -165,6 +166,68 @@ async def upload_zip(
     background.add_task(process_zip_job, job_id, zip_path, work_dir)
     log.info("[upload_zip] background task scheduled — returning 202")
 
+    return UploadJobOut.model_validate(job)
+
+
+@router.post(
+    "/events/{event_id}/upload-zip-from-drive",
+    response_model=UploadJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def upload_zip_from_drive(
+    _: AdminDep,
+    event_id: uuid.UUID,
+    session: SessionDep,
+    background: BackgroundTasks,
+    drive_file_id: str,
+    folder_id: uuid.UUID | None = None,
+) -> UploadJobOut:
+    """Process a .zip stored in Google Drive without any HTTP upload.
+
+    The user uploads their ZIP to Google Drive and provides its file ID here.
+    The server downloads the ZIP directly from Drive (no request timeout) then
+    processes it exactly like a direct ZIP upload. This is the recommended path
+    for large archives on Render's free tier.
+    """
+    import tempfile
+
+    event = EventRepository(session).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+
+    folder_repo = FolderRepository(session)
+    if folder_id is not None:
+        folder = folder_repo.get(folder_id)
+        if not folder or folder.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+    else:
+        existing = [f for f in folder_repo.list_for_event(event_id) if f.name == "Uploads"]
+        folder = existing[0] if existing else folder_repo.create(
+            Folder(event_id=event_id, name="Uploads")
+        )
+
+    job_id = uuid.uuid4()
+    base_tmp = settings.ZIP_TMP_DIR
+    try:
+        os.makedirs(base_tmp, exist_ok=True)
+    except OSError:
+        base_tmp = tempfile.gettempdir()
+    work_dir = os.path.join(base_tmp, str(job_id))
+    os.makedirs(work_dir, exist_ok=True)
+
+    job = UploadJob(
+        id=job_id,
+        event_id=event_id,
+        folder_id=folder.id,
+        status=JobStatus.PENDING,
+        message=f"Queued: will download ZIP from Drive file {drive_file_id}",
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background.add_task(process_drive_zip_job, job_id, drive_file_id, work_dir)
+    log.info("[upload_zip_from_drive] job=%s drive_file_id=%s", job_id, drive_file_id)
     return UploadJobOut.model_validate(job)
 
 

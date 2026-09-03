@@ -197,3 +197,11 @@ export async function adminUploadZip(
 // Poll a bulk-upload job's status/progress.
 export const adminGetJob = (jobId: string) =>
   request<UploadJob>(`/api/admin/jobs/${jobId}`, {}, true);
+
+// Process a ZIP already in Google Drive — no HTTP upload, no timeout.
+export const adminUploadZipFromDrive = (eventId: string, driveFileId: string) =>
+  request<UploadJob>(
+    `/api/admin/events/${eventId}/upload-zip-from-drive?drive_file_id=${encodeURIComponent(driveFileId)}`,
+    { method: "POST" },
+    true,
+  );

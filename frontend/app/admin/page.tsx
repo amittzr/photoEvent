@@ -13,6 +13,7 @@ import {
   adminSyncDrive,
   adminUploadPhotos,
   adminUploadZip,
+  adminUploadZipFromDrive,
   clearToken,
   getEvent,
   getToken,
@@ -42,6 +43,10 @@ export default function AdminDashboard() {
   // ZIP bulk-upload state.
   const [zipUploading, setZipUploading] = useState(false);
   const [job, setJob] = useState<UploadJob | null>(null);
+
+  // Drive ZIP state (no HTTP upload — user provides Drive file ID).
+  const [driveZipFileId, setDriveZipFileId] = useState("");
+  const [driveZipLoading, setDriveZipLoading] = useState(false);
 
   // Folder edit/delete + share modal state.
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -175,6 +180,22 @@ export default function AdminDashboard() {
       setSyncFolderInput("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Drive sync failed.");
+    }
+  }
+
+  async function onUploadZipFromDrive(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected || !driveZipFileId.trim()) return;
+    setDriveZipLoading(true);
+    setError(null);
+    try {
+      const created = await adminUploadZipFromDrive(selected.id, driveZipFileId.trim());
+      setJob(created);
+      setDriveZipFileId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drive ZIP processing failed.");
+    } finally {
+      setDriveZipLoading(false);
     }
   }
 
@@ -496,6 +517,38 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 )}
+              </div>
+
+              <div className="rounded-xl bg-white p-5 shadow-sm">
+                <h3 className="mb-1 font-semibold">
+                  Process ZIP from Google Drive ⭐
+                </h3>
+                <p className="mb-3 text-xs text-neutral-500">
+                  For large ZIPs (700+ photos): upload the ZIP to your Google
+                  Drive, then paste its file ID here. The server downloads and
+                  processes it directly — no browser upload timeout.
+                </p>
+                <p className="mb-2 text-xs text-neutral-400">
+                  To get the file ID: right-click the ZIP in Drive → Share →
+                  copy the link. The ID is the long string in the URL after{" "}
+                  <code>/d/</code>.
+                </p>
+                <form onSubmit={onUploadZipFromDrive} className="flex gap-2">
+                  <input
+                    placeholder="Drive ZIP file ID"
+                    value={driveZipFileId}
+                    onChange={(e) => setDriveZipFileId(e.target.value)}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={driveZipLoading}
+                    className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    {driveZipLoading ? "Starting…" : "Process"}
+                  </button>
+                </form>
               </div>
             </div>
           )}
