@@ -1,4 +1,5 @@
 """Admin router for bulk photo uploads."""
+import logging
 import os
 import uuid
 from typing import Annotated
@@ -26,6 +27,7 @@ from app.services.upload_service import UploadService
 from app.services.zip_upload_service import process_zip_job
 
 router = APIRouter(prefix="/api/admin", tags=["admin:photos"])
+log = logging.getLogger("zip_upload")
 
 UploadServiceDep = Annotated[UploadService, Depends(get_upload_service)]
 
@@ -96,12 +98,10 @@ async def upload_zip(
     file: Annotated[UploadFile, File(...)],
     folder_id: uuid.UUID | None = None,
 ) -> UploadJobOut:
-    """Accept a large .zip of images and process it asynchronously.
+    """Accept a large .zip of images and process it asynchronously."""
+    log.info("[upload_zip] received request event_id=%s filename=%s content_type=%s",
+             event_id, file.filename, file.content_type)
 
-    The ZIP is streamed to disk (never fully loaded into RAM), a job row is
-    created, and processing is scheduled in the background. Returns 202 with the
-    job so the client can poll progress and the HTTP connection doesn't time out.
-    """
     event = EventRepository(session).get(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found.")
@@ -125,21 +125,29 @@ async def upload_zip(
     import tempfile
 
     base_tmp = settings.ZIP_TMP_DIR
+    log.info("[upload_zip] configured ZIP_TMP_DIR=%s", base_tmp)
     try:
         os.makedirs(base_tmp, exist_ok=True)
-    except OSError:
+        log.info("[upload_zip] using configured tmp dir: %s", base_tmp)
+    except OSError as e:
+        log.warning("[upload_zip] can't create %s (%s) — falling back to system tmp", base_tmp, e)
         base_tmp = tempfile.gettempdir()
     work_dir = os.path.join(base_tmp, str(job_id))
     os.makedirs(work_dir, exist_ok=True)
     zip_path = os.path.join(work_dir, "upload.zip")
+    log.info("[upload_zip] work_dir=%s zip_path=%s", work_dir, zip_path)
 
     # Stream in chunks so multi-GB archives never sit fully in memory.
+    bytes_written = 0
+    log.info("[upload_zip] starting stream to disk: %s", zip_path)
     with open(zip_path, "wb") as out:
         while True:
             chunk = await file.read(1024 * 1024)  # 1 MB
             if not chunk:
                 break
             out.write(chunk)
+            bytes_written += len(chunk)
+    log.info("[upload_zip] stream complete: %d bytes written to %s", bytes_written, zip_path)
 
     # Persist the job as PENDING.
     job = UploadJob(
@@ -151,9 +159,11 @@ async def upload_zip(
     session.add(job)
     session.commit()
     session.refresh(job)
+    log.info("[upload_zip] job created id=%s — scheduling background task", job_id)
 
     # Schedule background processing (extract + parallel workers).
     background.add_task(process_zip_job, job_id, zip_path, work_dir)
+    log.info("[upload_zip] background task scheduled — returning 202")
 
     return UploadJobOut.model_validate(job)
 
