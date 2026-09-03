@@ -86,6 +86,7 @@ class EventService:
             title=event.title,
             slug=event.slug,
             event_date=event.event_date,
+            drive_folder_id=getattr(event, "drive_folder_id", None),
             created_at=event.created_at,
             folders=folders,
         )
