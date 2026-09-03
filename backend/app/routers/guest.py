@@ -36,6 +36,29 @@ StorageDep = Annotated[StorageService, Depends(get_storage_service)]
 _ALLOWED_SELFIE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 
 
+@router.get("/_debug/schema")
+def debug_schema(session: SessionDep) -> dict:
+    """TEMPORARY diagnostics: report events columns + any query error.
+
+    Remove after debugging. Helps identify DB/model schema drift on deploys.
+    """
+    from sqlalchemy import inspect, text
+
+    out: dict = {}
+    try:
+        insp = inspect(session.get_bind())
+        out["events_columns"] = sorted(c["name"] for c in insp.get_columns("events"))
+        out["photos_columns"] = sorted(c["name"] for c in insp.get_columns("photos"))
+    except Exception as exc:  # noqa: BLE001
+        out["inspect_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        session.exec(text("SELECT id, slug, drive_folder_id FROM events LIMIT 1"))
+        out["select_drive_folder_id"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        out["select_drive_folder_id_error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+    return out
+
+
 @router.get("/e/{slug}", response_model=EventDetailOut)
 def get_event(slug: str, service: EventServiceDep) -> EventDetailOut:
     """Return public event details, folders, and per-folder photo counts."""
