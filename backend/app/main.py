@@ -1,13 +1,10 @@
 """FastAPI application factory and entrypoint."""
 import logging
-import re
 from contextlib import asynccontextmanager
-from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import settings
 from app.core.database import init_db
@@ -15,51 +12,6 @@ from app.core.exceptions import StorageError
 from app.routers import admin_events, admin_photos, auth, guest
 
 logger = logging.getLogger(__name__)
-
-# Pre-compiled regex used by both middlewares.
-_VERCEL_RE = re.compile(r"^https://[^.]+\.vercel\.app$")
-
-
-class EnsureCORSMiddleware:
-    """Guarantee CORS headers are present on every response.
-
-    FastAPI's built-in CORSMiddleware can miss error responses that are
-    generated deep inside Starlette's ServerErrorMiddleware (e.g. uncaught
-    exceptions, 403 auth failures). This outer ASGI wrapper intercepts the
-    response and injects the header when the request origin is trusted —
-    making sure the browser never sees a CORS-blocked error response.
-    """
-
-    def __init__(self, app: ASGIApp, origins: list[str]) -> None:
-        self._app = app
-        self._exact = set(origins)
-
-    def _is_trusted(self, origin: str) -> bool:
-        return origin in self._exact or bool(_VERCEL_RE.match(origin))
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self._app(scope, receive, send)
-            return
-
-        headers = dict(scope.get("headers", []))
-        origin = headers.get(b"origin", b"").decode()
-        trusted = self._is_trusted(origin) if origin else False
-
-        async def send_with_cors(message: dict) -> None:
-            if trusted and message["type"] == "http.response.start":
-                # Add CORS header only if not already present.
-                existing = dict(message.get("headers", []))
-                if b"access-control-allow-origin" not in existing:
-                    message = dict(message)
-                    message["headers"] = list(message["headers"]) + [
-                        (b"access-control-allow-origin", origin.encode()),
-                        (b"access-control-allow-credentials", b"true"),
-                        (b"vary", b"Origin"),
-                    ]
-            await send(message)
-
-        await self._app(scope, receive, send_with_cors if trusted else send)
 
 
 @asynccontextmanager
@@ -89,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="photoEvent API",
         # Bump on deploys so /openapi.json confirms the running build.
-        version="1.5.0-cors-hardened",
+        version="1.6.0-fix-cors-middleware",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
@@ -105,9 +57,6 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    # EnsureCORSMiddleware sits OUTSIDE CORSMiddleware so it can add headers
-    # even when ServerErrorMiddleware swallows errors before CORS can attach them.
-    app.add_middleware(EnsureCORSMiddleware, origins=settings.frontend_origins)
 
     # Translate storage backend failures into a clear 502 (Bad Gateway) response.
     # This runs after the CORS middleware, so CORS headers are still attached and
@@ -136,7 +85,7 @@ def create_app() -> FastAPI:
 
         return {
             "status": "ok",
-            "version": "1.5.0-cors-hardened",
+            "version": "1.6.0-fix-cors-middleware",
             "init_error": db.LAST_INIT_ERROR,
         }
 
