@@ -56,6 +56,24 @@ def debug_schema(session: SessionDep) -> dict:
         out["select_drive_folder_id"] = "ok"
     except Exception as exc:  # noqa: BLE001
         out["select_drive_folder_id_error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
+    # Try the full guest-detail path for the first event and capture any error.
+    try:
+        from app.repositories.event_repository import EventRepository
+        from app.repositories.folder_repository import FolderRepository
+
+        first = EventRepository(session).list_all()
+        if first:
+            slug = first[0].slug
+            counts = FolderRepository(session).photo_counts_for_event(first[0].id)
+            out["detail_probe_slug"] = slug
+            out["detail_probe_folder_counts"] = {str(k): v for k, v in counts.items()}
+        else:
+            out["detail_probe"] = "no events"
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+
+        out["detail_probe_error"] = f"{type(exc).__name__}: {str(exc)[:400]}"
+        out["detail_probe_trace"] = traceback.format_exc()[-800:]
     return out
 
 
