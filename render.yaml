@@ -1,0 +1,48 @@
+# Render Blueprint for the photoEvent backend.
+# Docs: https://render.com/docs/blueprint-spec
+#
+# This makes deploys reproducible and captures the env vars + disk the backend
+# needs. Secret files (OAuth token / client secrets) are added via the Render
+# dashboard as Secret Files mounted at /etc/secrets/.
+services:
+  - type: web
+    name: photoevent-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    # Auto-deploy on every push to the default branch.
+    autoDeploy: true
+    # Run migrations, then start the API (matches docker-compose behavior).
+    dockerCommand: >
+      sh -c "alembic upgrade head || true;
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    healthCheckPath: /health
+    disk:
+      # Local WebP thumbnail cache + ZIP temp files persist across deploys.
+      name: appdata
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: DATABASE_URL
+        sync: false            # set to your Neon connection string (psycopg driver)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_ORIGIN
+        value: "https://photo-event-six.vercel.app"
+      - key: DRIVE_AUTH_MODE
+        value: "oauth"
+      # OAuth files are provided as Render Secret Files at /etc/secrets/.
+      - key: GOOGLE_TOKEN_FILE
+        value: "/etc/secrets/oauth-token.json"
+      - key: GOOGLE_CLIENT_SECRETS_FILE
+        value: "/etc/secrets/oauth-client-secrets.json"
+      - key: GOOGLE_DRIVE_ROOT_FOLDER_ID
+        sync: false
+      - key: THUMBNAIL_DIR
+        value: "/app/data/thumbnails"
+      - key: ZIP_TMP_DIR
+        value: "/app/data/tmp"
