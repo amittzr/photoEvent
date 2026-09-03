@@ -39,6 +39,46 @@ _SCOPES = ["https://www.googleapis.com/auth/drive"]
 # MIME type Drive uses to represent a folder.
 _FOLDER_MIME = "application/vnd.google-apps.folder"
 
+# Render mounts Secret Files under this directory.
+_RENDER_SECRETS_DIR = "/etc/secrets"
+
+
+def _resolve_credential_path(
+    env_override: str | None, secret_filename: str, local_path: str
+) -> str:
+    """Resolve a credential file path with the following precedence:
+
+    1. Explicit env override (e.g. GOOGLE_CLIENT_SECRETS_FILE / GOOGLE_TOKEN_FILE).
+    2. Render Secret File at /etc/secrets/<secret_filename>, if it exists.
+    3. The configured local path (Docker/dev default).
+
+    Returns the first candidate that is set/exists; falls back to local_path.
+    """
+    if env_override:
+        return env_override
+    render_path = os.path.join(_RENDER_SECRETS_DIR, secret_filename)
+    if os.path.exists(render_path):
+        return render_path
+    return local_path
+
+
+def _oauth_client_secrets_path() -> str:
+    """Path to the OAuth client secrets, honoring env/Render overrides."""
+    return _resolve_credential_path(
+        settings.GOOGLE_CLIENT_SECRETS_FILE,
+        "oauth-client-secrets.json",
+        settings.GOOGLE_OAUTH_CLIENT_SECRETS,
+    )
+
+
+def _oauth_token_path() -> str:
+    """Path to the OAuth token, honoring env/Render overrides."""
+    return _resolve_credential_path(
+        settings.GOOGLE_TOKEN_FILE,
+        "oauth-token.json",
+        settings.GOOGLE_OAUTH_TOKEN_PATH,
+    )
+
 
 def _build_credentials():
     """Build Drive API credentials based on the configured auth mode."""
@@ -48,10 +88,11 @@ def _build_credentials():
         )
 
     # OAuth user-delegation mode: load the stored token (with refresh token).
-    token_path = settings.GOOGLE_OAUTH_TOKEN_PATH
+    token_path = _oauth_token_path()
     if not os.path.exists(token_path):
         raise StorageError(
-            "Google Drive OAuth token not found. Run "
+            "Google Drive OAuth token not found. Set GOOGLE_TOKEN_FILE, mount a "
+            "Render Secret File at /etc/secrets/oauth-token.json, or run "
             "scripts/generate_oauth_token.py to authorize a user account.",
             upstream_status=500,
         )

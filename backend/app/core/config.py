@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     GOOGLE_OAUTH_CLIENT_SECRETS: str = "/app/oauth-client-secrets.json"
     # Path where the generated OAuth token (with refresh token) is stored/read.
     GOOGLE_OAUTH_TOKEN_PATH: str = "/app/oauth-token.json"
+    # Optional explicit overrides (e.g. Render Secret Files). When set, these
+    # take precedence over both /etc/secrets and the local paths above.
+    GOOGLE_CLIENT_SECRETS_FILE: str | None = None
+    GOOGLE_TOKEN_FILE: str | None = None
     # Parent Drive folder under which all event folders/photos are created.
     GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""
 
