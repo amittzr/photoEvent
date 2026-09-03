@@ -22,11 +22,16 @@ async def lifespan(_: FastAPI):
     the app self-healing on databases where migrations haven't run (e.g. a fresh
     Neon PostgreSQL instance) without dropping any existing data.
     """
+    import app.core.database as db
+
     try:
         init_db()
+        db.LAST_INIT_ERROR = None
         logger.info("Database initialized (tables ensured).")
-    except Exception:  # noqa: BLE001
-        # Don't crash the whole app if init fails; log so it's visible in logs.
+    except Exception as exc:  # noqa: BLE001
+        # Don't crash the whole app if init fails; log AND record so /health
+        # can surface the reason instead of failing silently.
+        db.LAST_INIT_ERROR = f"{type(exc).__name__}: {exc}"
         logger.exception("Database initialization failed on startup.")
     yield
 
@@ -36,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="photoEvent API",
         # Bump on deploys so /openapi.json confirms the running build.
-        version="1.2.0-schema-heal",
+        version="1.3.0-heal-folders",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
@@ -74,9 +79,15 @@ def create_app() -> FastAPI:
     app.include_router(guest.router)
 
     @app.get("/health", tags=["meta"])
-    def health() -> dict[str, str]:
-        """Simple liveness probe."""
-        return {"status": "ok"}
+    def health() -> dict[str, str | None]:
+        """Liveness probe; also surfaces the last DB init error, if any."""
+        import app.core.database as db
+
+        return {
+            "status": "ok",
+            "version": "1.3.0-heal-folders",
+            "init_error": db.LAST_INIT_ERROR,
+        }
 
     return app
 

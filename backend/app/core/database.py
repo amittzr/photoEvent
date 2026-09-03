@@ -45,14 +45,27 @@ def init_db() -> None:
     _ensure_columns()
 
 
+# Records the last init_db error so /health can surface schema/init problems
+# instead of failing silently. None means the last init succeeded.
+LAST_INIT_ERROR: str | None = None
+
+
 def _ensure_columns() -> None:
-    """Add columns that may be missing on pre-existing tables (idempotent)."""
+    """Add columns that may be missing on pre-existing tables (idempotent).
+
+    Each ALTER runs in its own transaction so one failure can't abort the rest,
+    and covers every column the current models expect across all tables. This
+    keeps deployments where migrations didn't run (e.g. Neon) self-healing.
+    """
     statements = [
-        # events.drive_folder_id (added for linking an existing Drive folder).
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR",
-        # photos.drive_thumb_id became nullable; ensure the column exists.
+        "ALTER TABLE folders ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE photos ADD COLUMN IF NOT EXISTS drive_thumb_id VARCHAR",
+        "ALTER TABLE photos ADD COLUMN IF NOT EXISTS drive_original_id VARCHAR",
+        "ALTER TABLE photos ADD COLUMN IF NOT EXISTS thumb_url VARCHAR",
+        "ALTER TABLE photos ADD COLUMN IF NOT EXISTS original_url VARCHAR",
     ]
-    with engine.begin() as conn:
-        for stmt in statements:
+    for stmt in statements:
+        # Separate transaction per statement so a single failure is isolated.
+        with engine.begin() as conn:
             conn.execute(text(stmt))
