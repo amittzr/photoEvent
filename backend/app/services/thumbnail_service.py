@@ -20,7 +20,13 @@ class ThumbnailService:
 
     def __init__(self) -> None:
         self._dir = settings.THUMBNAIL_DIR
-        os.makedirs(self._dir, exist_ok=True)
+        try:
+            os.makedirs(self._dir, exist_ok=True)
+        except OSError:
+            # Directory creation may fail on environments without a mounted disk
+            # (e.g. Render free tier without a persistent disk). Thumbnails will
+            # be regenerated from Drive on every request in that case.
+            pass
 
     def path_for(self, photo_id: uuid.UUID) -> str:
         """Return the local filesystem path for a photo's WebP thumbnail."""
@@ -40,8 +46,10 @@ class ThumbnailService:
     def generate(self, image_bytes: bytes, photo_id: uuid.UUID) -> tuple[int, int]:
         """Create a WebP thumbnail from image bytes and write it to disk.
 
-        Returns the ORIGINAL image (width, height). The thumbnail is resized so
-        its longest edge is at most THUMBNAIL_MAX_EDGE (default 600px).
+        Returns the ORIGINAL image (width, height). If the disk is unavailable
+        (e.g. no persistent disk on Render), the dimensions are still returned
+        so the caller can persist the photo row — the thumbnail will be
+        regenerated from Drive on the first request that needs it.
         """
         img = Image.open(io.BytesIO(image_bytes))
         # Respect EXIF orientation so thumbnails aren't rotated.
@@ -54,15 +62,21 @@ class ThumbnailService:
             Image.LANCZOS,
         )
 
-        # Ensure the directory exists (volume may be fresh) and write atomically.
-        os.makedirs(self._dir, exist_ok=True)
-        final_path = self.path_for(photo_id)
-        tmp_path = f"{final_path}.tmp"
-        thumb.save(
-            tmp_path,
-            format="WEBP",
-            quality=settings.THUMBNAIL_WEBP_QUALITY,
-            method=6,
-        )
-        os.replace(tmp_path, final_path)
+        # Best-effort: try to write the thumbnail to disk. If the directory
+        # doesn't exist or isn't writable, skip — the proxy endpoint has a
+        # Drive fallback that regenerates the thumbnail on the fly.
+        try:
+            os.makedirs(self._dir, exist_ok=True)
+            final_path = self.path_for(photo_id)
+            tmp_path = f"{final_path}.tmp"
+            thumb.save(
+                tmp_path,
+                format="WEBP",
+                quality=settings.THUMBNAIL_WEBP_QUALITY,
+                method=6,
+            )
+            os.replace(tmp_path, final_path)
+        except OSError:
+            pass
+
         return orig_w, orig_h
