@@ -180,8 +180,16 @@ export async function adminUploadZip(
 export const adminGetJob = (jobId: string) =>
   request<UploadJob>(`/api/admin/jobs/${jobId}`, {}, true);
 
+// Sync an existing Google Drive folder — downloads one photo at a time,
+// safe on memory-constrained servers. Returns a job to poll.
+export const adminSyncDriveFolder = (eventId: string, driveFolderId: string) =>
+  request<UploadJob>(
+    `/api/admin/events/${eventId}/sync-folder?drive_folder_id=${encodeURIComponent(driveFolderId)}`,
+    { method: "POST" },
+    true,
+  );
+
 // Process a ZIP already stored in Google Drive — no browser upload, no timeout.
-// Get the file ID from the Drive file URL: drive.google.com/file/d/FILE_ID/view
 export const adminUploadZipFromDrive = (eventId: string, driveFileId: string) =>
   request<UploadJob>(
     `/api/admin/events/${eventId}/upload-zip-from-drive?drive_file_id=${encodeURIComponent(driveFileId)}`,

@@ -10,6 +10,7 @@ import {
   adminGetJob,
   adminListEvents,
   adminRenameFolder,
+  adminSyncDriveFolder,
   adminUploadPhotos,
   adminUploadZip,
   adminUploadZipFromDrive,
@@ -45,6 +46,10 @@ export default function AdminDashboard() {
   // Drive ZIP state — user provides a Drive file ID, no browser upload needed.
   const [driveZipId, setDriveZipId] = useState("");
   const [driveZipLoading, setDriveZipLoading] = useState(false);
+
+  // Drive folder sync state — processes one photo at a time, safe on free tier.
+  const [syncFolderId, setSyncFolderId] = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
 
   // Folder edit/delete + share modal state.
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -177,6 +182,22 @@ export default function AdminDashboard() {
       if (selected) await openEvent(selected.slug);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete folder.");
+    }
+  }
+
+  async function onSyncDriveFolder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selected || !syncFolderId.trim()) return;
+    setSyncLoading(true);
+    setError(null);
+    try {
+      const created = await adminSyncDriveFolder(selected.id, syncFolderId.trim());
+      setJob(created);
+      setSyncFolderId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed.");
+    } finally {
+      setSyncLoading(false);
     }
   }
 
@@ -455,6 +476,33 @@ export default function AdminDashboard() {
               </div>
 
               {/* Process ZIP from Google Drive ⭐ — no upload timeout */}
+              {/* Sync from Google Drive folder — processes one photo at a time */}
+              <div className="rounded-xl border-2 border-brand bg-white p-5 shadow-sm">
+                <h3 className="mb-1 font-semibold text-brand">
+                  🔄 Sync from Google Drive Folder
+                </h3>
+                <p className="mb-2 text-xs text-neutral-500">
+                  Recommended for 700+ photos. Paste your Drive folder ID — the
+                  server imports one photo at a time (no memory issues).
+                </p>
+                <form onSubmit={onSyncDriveFolder} className="flex gap-2">
+                  <input
+                    placeholder="Drive folder ID (e.g. 1lpoq3TRqI...)"
+                    value={syncFolderId}
+                    onChange={(e) => setSyncFolderId(e.target.value)}
+                    className="flex-1 rounded-lg border px-3 py-2 text-sm"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    disabled={syncLoading}
+                    className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-50"
+                  >
+                    {syncLoading ? "Starting…" : "Sync Photos"}
+                  </button>
+                </form>
+              </div>
+
               <div className="rounded-xl bg-white p-5 shadow-sm">
                 <h3 className="mb-1 font-semibold">
                   Import ZIP from Google Drive ⭐

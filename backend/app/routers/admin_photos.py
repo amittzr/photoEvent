@@ -22,6 +22,7 @@ from app.repositories.event_repository import EventRepository
 from app.repositories.folder_repository import FolderRepository
 from app.schemas.job import UploadJobOut
 from app.schemas.photo import PhotoOut, UploadResult
+from app.services.drive_sync_service import sync_drive_folder_job
 from app.services.drive_zip_service import process_drive_zip_job
 from app.services.upload_service import UploadService
 from app.services.zip_upload_service import process_zip_job
@@ -211,6 +212,57 @@ def upload_zip_from_drive(
 
     background.add_task(process_drive_zip_job, job_id, drive_file_id, work_dir)
     log.info("[upload_zip_from_drive] job=%s drive_file_id=%s", job_id, drive_file_id)
+    return UploadJobOut.model_validate(job)
+
+
+@router.post(
+    "/events/{event_id}/sync-folder",
+    response_model=UploadJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def sync_drive_folder(
+    _: AdminDep,
+    event_id: uuid.UUID,
+    session: SessionDep,
+    background: BackgroundTasks,
+    drive_folder_id: str,
+    folder_id: uuid.UUID | None = None,
+) -> UploadJobOut:
+    """Ingest photos from an existing Google Drive folder one at a time.
+
+    Processes each image sequentially (max_workers=1) so RAM never spikes —
+    safe on Render's free 512MB tier. Already-imported files are skipped.
+    """
+    import tempfile
+
+    event = EventRepository(session).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+
+    folder_repo = FolderRepository(session)
+    if folder_id is not None:
+        folder = folder_repo.get(folder_id)
+        if not folder or folder.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+    else:
+        existing = [f for f in folder_repo.list_for_event(event_id)
+                    if f.name == "Drive Import"]
+        folder = existing[0] if existing else folder_repo.create(
+            Folder(event_id=event_id, name="Drive Import")
+        )
+
+    job = UploadJob(
+        event_id=event_id,
+        folder_id=folder.id,
+        status=JobStatus.PENDING,
+        message=f"Queued: will scan Drive folder {drive_folder_id}",
+    )
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background.add_task(sync_drive_folder_job, job.id, drive_folder_id)
+    log.info("[sync_drive] job=%s folder=%s", job.id, drive_folder_id)
     return UploadJobOut.model_validate(job)
 
 

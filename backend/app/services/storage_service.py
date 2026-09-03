@@ -270,6 +270,56 @@ class StorageService:
         result = self.upload_file(data, folder_id, file_name, content_type)
         return result["id"]
 
+    def list_image_files(self, folder_id: str) -> list[dict[str, str]]:
+        """Recursively list all image files under a Drive folder (handles subfolders)."""
+        results: list[dict[str, str]] = []
+        visited: set[str] = set()
+        stack = [folder_id]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for f in self._list_children(current):
+                mime = f.get("mimeType", "")
+                if mime == _FOLDER_MIME:
+                    stack.append(f["id"])
+                elif mime.startswith("image/"):
+                    results.append({
+                        "id": f["id"],
+                        "name": f.get("name", f["id"]),
+                        "mimeType": mime,
+                    })
+        return results
+
+    def _list_children(self, folder_id: str) -> list[dict]:
+        """List direct children (files + folders) of a folder."""
+        results: list[dict] = []
+        page_token = None
+        query = f"'{folder_id}' in parents and trashed = false"
+        while True:
+            try:
+                response = (
+                    self._get_service().files()
+                    .list(
+                        q=query,
+                        spaces="drive",
+                        fields="nextPageToken, files(id, name, mimeType)",
+                        pageSize=1000,
+                        pageToken=page_token,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    )
+                    .execute()
+                )
+            except HttpError as exc:
+                raise _wrap_http_error(exc, "list folder contents") from exc
+            results.extend(response.get("files", []))
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return results
+
     def delete_file(self, file_id: str) -> None:
         """Delete a file from Google Drive. Missing files are treated as success."""
         try:
