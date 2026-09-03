@@ -31,7 +31,7 @@ def create_app() -> FastAPI:
     """Build and configure the FastAPI application."""
     app = FastAPI(
         title="photoEvent API",
-        version="2.0.0",
+        version="2.0.0-afd047e",
         description="Event photo sharing with AI facial recognition.",
         lifespan=lifespan,
     )
@@ -73,7 +73,7 @@ def create_app() -> FastAPI:
         import app.core.database as db
         return {
             "status": "ok",
-            "version": "2.0.0",
+            "version": "2.0.0-afd047e",
             "init_error": getattr(db, "LAST_INIT_ERROR", None),
         }
 
