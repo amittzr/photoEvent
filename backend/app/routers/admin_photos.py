@@ -19,8 +19,9 @@ from app.models.folder import Folder
 from app.models.upload_job import JobStatus, UploadJob
 from app.repositories.event_repository import EventRepository
 from app.repositories.folder_repository import FolderRepository
-from app.schemas.job import UploadJobOut
+from app.schemas.job import DriveSyncRequest, UploadJobOut
 from app.schemas.photo import PhotoOut, UploadResult
+from app.services.drive_sync_service import sync_drive_folder_job
 from app.services.upload_service import UploadService
 from app.services.zip_upload_service import process_zip_job
 
@@ -145,6 +146,74 @@ async def upload_zip(
     # Schedule background processing (extract + parallel workers).
     background.add_task(process_zip_job, job_id, zip_path, work_dir)
 
+    return UploadJobOut.model_validate(job)
+
+
+def _resolve_import_folder(
+    session, event_id: uuid.UUID, target_folder_id: uuid.UUID | None
+):
+    """Resolve the sub-folder photos are attached to for a Drive sync.
+
+    Uses the provided target folder, or gets/creates a default "Drive Import".
+    """
+    folder_repo = FolderRepository(session)
+    if target_folder_id is not None:
+        folder = folder_repo.get(target_folder_id)
+        if not folder or folder.event_id != event_id:
+            raise HTTPException(status_code=404, detail="Target folder not found.")
+        return folder
+    existing = [
+        f for f in folder_repo.list_for_event(event_id) if f.name == "Drive Import"
+    ]
+    return existing[0] if existing else folder_repo.create(
+        Folder(event_id=event_id, name="Drive Import")
+    )
+
+
+@router.post(
+    "/events/{event_id}/sync",
+    response_model=UploadJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def sync_drive_folder(
+    _: AdminDep,
+    event_id: uuid.UUID,
+    session: SessionDep,
+    background: BackgroundTasks,
+    body: DriveSyncRequest | None = None,
+) -> UploadJobOut:
+    """Ingest photos from a linked Google Drive folder into this event.
+
+    Uses the folder ID from the request body if given, otherwise the event's
+    stored drive_folder_id. Runs in the background and returns 202 with a job to
+    poll. Already-imported files (by Drive file ID) are skipped.
+    """
+    event = EventRepository(session).get(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found.")
+
+    body = body or DriveSyncRequest()
+    drive_folder_id = body.drive_folder_id or event.drive_folder_id
+    if not drive_folder_id:
+        raise HTTPException(
+            status_code=400,
+            detail="No Drive folder ID provided or stored on the event.",
+        )
+
+    # Persist the folder id on the event if it was supplied ad hoc.
+    if body.drive_folder_id and body.drive_folder_id != event.drive_folder_id:
+        event.drive_folder_id = body.drive_folder_id
+        session.add(event)
+        session.commit()
+
+    folder = _resolve_import_folder(session, event_id, body.target_folder_id)
+
+    job = UploadJob(event_id=event_id, folder_id=folder.id, status=JobStatus.PENDING)
+    session.add(job)
+    session.commit()
+    session.refresh(job)
+
+    background.add_task(sync_drive_folder_job, job.id, drive_folder_id)
     return UploadJobOut.model_validate(job)
 
 

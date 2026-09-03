@@ -14,6 +14,8 @@ class Event(SQLModel, table=True):
     title: str = Field(nullable=False)
     slug: str = Field(nullable=False, unique=True, index=True)
     event_date: date | None = Field(default=None)
+    # Optional: link an existing Google Drive folder to ingest its photos from.
+    drive_folder_id: str | None = Field(default=None, nullable=True)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), nullable=False
     )

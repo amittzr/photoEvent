@@ -78,6 +78,7 @@ export const adminCreateEvent = (payload: {
   title: string;
   slug: string;
   event_date: string | null;
+  drive_folder_id?: string | null;
 }) =>
   request<EventBase>(
     "/api/admin/events",
@@ -85,6 +86,23 @@ export const adminCreateEvent = (payload: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+    },
+    true,
+  );
+
+// Trigger ingestion of an existing Google Drive folder's photos. Returns a job.
+export const adminSyncDrive = (
+  eventId: string,
+  driveFolderId?: string,
+) =>
+  request<UploadJob>(
+    `/api/admin/events/${eventId}/sync`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        driveFolderId ? { drive_folder_id: driveFolderId } : {},
+      ),
     },
     true,
   );

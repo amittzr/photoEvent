@@ -10,6 +10,7 @@ import {
   adminGetJob,
   adminListEvents,
   adminRenameFolder,
+  adminSyncDrive,
   adminUploadPhotos,
   adminUploadZip,
   clearToken,
@@ -30,6 +31,7 @@ export default function AdminDashboard() {
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
   const [eventDate, setEventDate] = useState("");
+  const [driveFolderId, setDriveFolderId] = useState("");
 
   // New-folder + upload state.
   const [folderName, setFolderName] = useState("");
@@ -76,12 +78,20 @@ export default function AdminDashboard() {
         title,
         slug,
         event_date: eventDate || null,
+        drive_folder_id: driveFolderId.trim() || null,
       });
+      const linkedFolder = driveFolderId.trim();
       setTitle("");
       setSlug("");
       setEventDate("");
+      setDriveFolderId("");
       await refreshEvents();
       await openEvent(created.slug);
+      // If a Drive folder was linked, kick off ingestion immediately.
+      if (linkedFolder) {
+        const created_job = await adminSyncDrive(created.id);
+        setJob(created_job);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create event.");
     }
@@ -146,6 +156,17 @@ export default function AdminDashboard() {
     }, 2000);
     return () => clearInterval(timer);
   }, [job, selected]);
+
+  async function onSyncDrive() {
+    if (!selected) return;
+    setError(null);
+    try {
+      const created = await adminSyncDrive(selected.id);
+      setJob(created);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Drive sync failed.");
+    }
+  }
 
   function startEditFolder(folder: Folder) {
     setEditingFolder(folder);
@@ -228,6 +249,15 @@ export default function AdminDashboard() {
               onChange={(e) => setEventDate(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
+            <input
+              placeholder="Google Drive Folder ID (optional)"
+              value={driveFolderId}
+              onChange={(e) => setDriveFolderId(e.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+            />
+            <p className="text-xs text-neutral-400">
+              Link an existing Drive folder to auto-import its photos on create.
+            </p>
             <button
               type="submit"
               className="w-full rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
@@ -277,13 +307,25 @@ export default function AdminDashboard() {
                     Guest link: <code>/e/{selected.slug}</code>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowShare(true)}
-                  className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark"
-                >
-                  Share Event / הפק קישור ו-QR
-                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  {selected.drive_folder_id && (
+                    <button
+                      type="button"
+                      onClick={onSyncDrive}
+                      className="whitespace-nowrap rounded-lg border border-brand px-4 py-2 text-sm font-medium text-brand transition hover:bg-brand/5"
+                      title={`Sync from Drive folder ${selected.drive_folder_id}`}
+                    >
+                      Sync Photos
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowShare(true)}
+                    className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark"
+                  >
+                    Share Event / הפק קישור ו-QR
+                  </button>
+                </div>
               </div>
 
               <div className="rounded-xl bg-white p-5 shadow-sm">

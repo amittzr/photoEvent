@@ -44,6 +44,14 @@ class PhotoRepository:
         stmt = select(Photo).where(Photo.folder_id == folder_id)
         return list(self.session.exec(stmt))
 
+    def existing_drive_ids_for_event(self, event_id: uuid.UUID) -> set[str]:
+        """Return the set of Drive file IDs already ingested for an event.
+
+        Used by the Drive sync to skip files that were already imported.
+        """
+        stmt = select(Photo.drive_original_id).where(Photo.event_id == event_id)
+        return {row for row in self.session.exec(stmt) if row}
+
     def set_status(self, photo_id: uuid.UUID, status: PhotoStatus) -> None:
         photo = self.session.get(Photo, photo_id)
         if photo:

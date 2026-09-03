@@ -28,6 +28,7 @@ export interface EventBase {
   title: string;
   slug: string;
   event_date: string | null;
+  drive_folder_id: string | null;
   created_at: string;
 }
 

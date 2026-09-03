@@ -38,7 +38,12 @@ class EventService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="An event with this slug already exists.",
             )
-        event = Event(title=data.title, slug=data.slug, event_date=data.event_date)
+        event = Event(
+            title=data.title,
+            slug=data.slug,
+            event_date=data.event_date,
+            drive_folder_id=data.drive_folder_id,
+        )
         return EventOut.model_validate(self.event_repo.create(event))
 
     def list_events(self) -> list[EventOut]:

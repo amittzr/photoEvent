@@ -155,6 +155,63 @@ class StorageService:
             raise _wrap_http_error(exc, f"create folder '{folder_name}'") from exc
         return created["id"]
 
+    def _list_children(self, folder_id: str) -> list[dict[str, str]]:
+        """List all non-trashed direct children (files + folders) of a folder."""
+        results: list[dict[str, str]] = []
+        page_token: str | None = None
+        query = f"'{folder_id}' in parents and trashed = false"
+        while True:
+            try:
+                response = (
+                    self._service.files()
+                    .list(
+                        q=query,
+                        spaces="drive",
+                        fields="nextPageToken, files(id, name, mimeType)",
+                        pageSize=1000,
+                        pageToken=page_token,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    )
+                    .execute()
+                )
+            except HttpError as exc:
+                raise _wrap_http_error(exc, "list folder contents") from exc
+            results.extend(response.get("files", []))
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return results
+
+    def list_image_files(self, folder_id: str) -> list[dict[str, str]]:
+        """Recursively list all non-trashed image files under a Drive folder.
+
+        Walks into sub-folders so images nested in categories (e.g. Uploads,
+        Magnets) are found. Returns dicts with keys: id, name, mimeType.
+        Guards against cycles with a visited set.
+        """
+        results: list[dict[str, str]] = []
+        visited: set[str] = set()
+        stack = [folder_id]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            for f in self._list_children(current):
+                mime = f.get("mimeType", "")
+                if mime == _FOLDER_MIME:
+                    stack.append(f["id"])
+                elif mime.startswith("image/"):
+                    results.append(
+                        {
+                            "id": f["id"],
+                            "name": f.get("name", f["id"]),
+                            "mimeType": mime or "image/jpeg",
+                        }
+                    )
+        return results
+
     def _find_child_folder(self, name: str, parent_folder_id: str) -> str | None:
         """Return the ID of a non-trashed child folder with the given name."""
         # Escape single quotes to keep the Drive query string valid.
