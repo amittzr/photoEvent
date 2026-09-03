@@ -53,11 +53,10 @@ LAST_INIT_ERROR: str | None = None
 def _ensure_columns() -> None:
     """Add columns that may be missing on pre-existing tables (idempotent).
 
-    Each ALTER runs in its own transaction so one failure can't abort the rest,
-    and covers every column the current models expect across all tables. This
-    keeps deployments where migrations didn't run (e.g. Neon) self-healing.
+    Also ensures foreign keys have ON DELETE CASCADE so folder/photo deletes
+    work correctly. Each statement runs in its own transaction.
     """
-    statements = [
+    column_stmts = [
         "ALTER TABLE events ADD COLUMN IF NOT EXISTS drive_folder_id VARCHAR",
         "ALTER TABLE folders ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE photos ADD COLUMN IF NOT EXISTS drive_thumb_id VARCHAR",
@@ -65,7 +64,38 @@ def _ensure_columns() -> None:
         "ALTER TABLE photos ADD COLUMN IF NOT EXISTS thumb_url VARCHAR",
         "ALTER TABLE photos ADD COLUMN IF NOT EXISTS original_url VARCHAR",
     ]
-    for stmt in statements:
-        # Separate transaction per statement so a single failure is isolated.
+    for stmt in column_stmts:
+        with engine.begin() as conn:
+            conn.execute(text(stmt))
+
+    # Ensure foreign keys have ON DELETE CASCADE. We drop and re-add them only
+    # if the current constraint lacks cascade (safe to run multiple times).
+    fk_stmts = [
+        """
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE constraint_name = 'photos_folder_id_fkey'
+          ) THEN
+            ALTER TABLE photos DROP CONSTRAINT photos_folder_id_fkey;
+          END IF;
+          ALTER TABLE photos ADD CONSTRAINT photos_folder_id_fkey
+            FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE;
+        END $$;
+        """,
+        """
+        DO $$ BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE constraint_name = 'faces_photo_id_fkey'
+          ) THEN
+            ALTER TABLE faces DROP CONSTRAINT faces_photo_id_fkey;
+          END IF;
+          ALTER TABLE faces ADD CONSTRAINT faces_photo_id_fkey
+            FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE;
+        END $$;
+        """,
+    ]
+    for stmt in fk_stmts:
         with engine.begin() as conn:
             conn.execute(text(stmt))

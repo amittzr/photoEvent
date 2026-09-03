@@ -119,8 +119,17 @@ async def upload_zip(
         )
 
     # Create a unique working directory and stream the upload to disk.
+    # Fall back to the system temp dir if the configured path isn't writable
+    # (e.g. Render instance without a persistent disk mounted).
     job_id = uuid.uuid4()
-    work_dir = os.path.join(settings.ZIP_TMP_DIR, str(job_id))
+    import tempfile
+
+    base_tmp = settings.ZIP_TMP_DIR
+    try:
+        os.makedirs(base_tmp, exist_ok=True)
+    except OSError:
+        base_tmp = tempfile.gettempdir()
+    work_dir = os.path.join(base_tmp, str(job_id))
     os.makedirs(work_dir, exist_ok=True)
     zip_path = os.path.join(work_dir, "upload.zip")
 
