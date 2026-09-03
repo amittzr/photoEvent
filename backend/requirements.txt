@@ -31,7 +31,9 @@ google-auth-oauthlib==1.2.1
 # --- Image processing & face recognition ---
 Pillow==11.0.0
 numpy==1.26.4
-# InsightFace is the primary engine (512-d embeddings). onnxruntime powers inference.
-insightface==0.7.3
-onnxruntime==1.20.1
-opencv-python-headless==4.10.0.84
+# face_recognition (dlib) is the face engine: 128-d embeddings, ~80MB RAM.
+# Much lighter than InsightFace (512-d, 400MB) — fits on Render's free tier.
+face_recognition==1.3.0
+# dlib is installed from source in the Dockerfile using cmake.
+# Pin to the version that builds cleanly with Python 3.11.
+dlib==19.24.6

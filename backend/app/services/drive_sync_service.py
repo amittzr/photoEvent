@@ -22,9 +22,11 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.core.database import engine
+from app.models.face import Face
 from app.models.photo import Photo, PhotoStatus
 from app.models.upload_job import JobStatus, UploadJob
 from app.repositories.photo_repository import PhotoRepository
+from app.services.face_service import FaceService
 from app.services.storage_service import StorageService
 from app.services.thumbnail_service import ThumbnailService
 
@@ -67,11 +69,29 @@ def _ingest_one(
                 thumb_url=f"/api/public/photos/{photo_id}/thumbnail",
                 width=width,
                 height=height,
-                # Mark DONE immediately — face indexing skipped in bulk sync
-                # to avoid OOM on memory-constrained servers (InsightFace ~400MB).
-                status=PhotoStatus.DONE,
+                status=PhotoStatus.PROCESSING,
             )
             session.add(photo)
+            session.commit()
+
+        # Extract 128-d face embeddings (dlib — safe on Render's free 512MB tier).
+        detected = FaceService().extract_faces(image_bytes)
+        with Session(engine) as session:
+            if detected:
+                session.add_all([
+                    Face(
+                        photo_id=photo_id,
+                        event_id=event_id,
+                        embedding=d.embedding,
+                        bbox=d.bbox,
+                        det_score=d.det_score,
+                    )
+                    for d in detected
+                ])
+            db_photo = session.get(Photo, photo_id)
+            if db_photo:
+                db_photo.status = PhotoStatus.DONE
+                session.add(db_photo)
             session.commit()
         return True
     except Exception:

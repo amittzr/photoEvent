@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     GOOGLE_DRIVE_ROOT_FOLDER_ID: str = ""
 
     # --- Face recognition ---
-    FACE_ENGINE: str = "insightface"  # "insightface" | "face_recognition"
-    FACE_EMBEDDING_DIM: int = 512
+    # face_recognition (dlib ResNet, 128-d, ~80MB) replaces InsightFace (512-d, ~400MB).
+    FACE_ENGINE: str = "face_recognition"
+    FACE_EMBEDDING_DIM: int = 128
     FACE_MATCH_THRESHOLD: float = 0.45
     FACE_SEARCH_TOP_K: int = 200
 
