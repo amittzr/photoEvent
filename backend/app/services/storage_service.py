@@ -222,6 +222,19 @@ class StorageService:
         result = self.upload_file(data, folder_id, file_name, content_type)
         return result["id"]
 
+    def delete_file(self, file_id: str) -> None:
+        """Delete a file from Google Drive. Missing files are treated as success."""
+        try:
+            self._service.files().delete(
+                fileId=file_id, supportsAllDrives=True
+            ).execute()
+        except HttpError as exc:
+            status = getattr(getattr(exc, "resp", None), "status", None)
+            # 404 means it's already gone; that's fine for cleanup.
+            if status == 404:
+                return
+            raise _wrap_http_error(exc, "delete file") from exc
+
     def _grant_public_read(self, file_id: str) -> None:
         """Grant the 'anyone' role reader permission on a file."""
         try:

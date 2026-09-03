@@ -30,6 +30,13 @@ class ThumbnailService:
         """True if a cached thumbnail file already exists on disk."""
         return os.path.isfile(self.path_for(photo_id))
 
+    def delete(self, photo_id: uuid.UUID) -> None:
+        """Remove a cached thumbnail file if present (no error if missing)."""
+        try:
+            os.remove(self.path_for(photo_id))
+        except OSError:
+            pass
+
     def generate(self, image_bytes: bytes, photo_id: uuid.UUID) -> tuple[int, int]:
         """Create a WebP thumbnail from image bytes and write it to disk.
 

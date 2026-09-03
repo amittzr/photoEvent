@@ -100,6 +100,24 @@ export const adminCreateFolder = (eventId: string, name: string, position = 0) =
     true,
   );
 
+export const adminRenameFolder = (folderId: string, name: string) =>
+  request<Folder>(
+    `/api/admin/folders/${folderId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+    true,
+  );
+
+export const adminDeleteFolder = (folderId: string, cascade = true) =>
+  request<void>(
+    `/api/admin/folders/${folderId}?cascade=${cascade}`,
+    { method: "DELETE" },
+    true,
+  );
+
 export async function adminUploadPhotos(
   folderId: string,
   files: FileList | File[],

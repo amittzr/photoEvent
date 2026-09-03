@@ -7,13 +7,15 @@ from app.models.event import Event
 from app.models.folder import Folder
 from app.repositories.event_repository import EventRepository
 from app.repositories.folder_repository import FolderRepository
+from app.repositories.photo_repository import PhotoRepository
 from app.schemas.event import (
     EventCreate,
     EventDetailOut,
     EventOut,
     EventUpdate,
 )
-from app.schemas.folder import FolderCreate, FolderOut
+from app.schemas.folder import FolderCreate, FolderOut, FolderUpdate
+from app.services.thumbnail_service import ThumbnailService
 
 
 class EventService:
@@ -23,9 +25,11 @@ class EventService:
         self,
         event_repo: EventRepository,
         folder_repo: FolderRepository,
+        photo_repo: PhotoRepository,
     ) -> None:
         self.event_repo = event_repo
         self.folder_repo = folder_repo
+        self.photo_repo = photo_repo
 
     # --- Events ---
     def create_event(self, data: EventCreate) -> EventOut:
@@ -92,8 +96,53 @@ class EventService:
         folder = Folder(event_id=event_id, name=data.name, position=data.position)
         return FolderOut.model_validate(self.folder_repo.create(folder))
 
-    def delete_folder(self, folder_id: uuid.UUID) -> None:
+    def rename_folder(self, folder_id: uuid.UUID, data: FolderUpdate) -> FolderOut:
         folder = self.folder_repo.get(folder_id)
         if not folder:
             raise HTTPException(status_code=404, detail="Folder not found.")
+        folder.name = data.name
+        updated = self.folder_repo.create(folder)  # add+commit+refresh (upsert)
+        counts = self.folder_repo.photo_counts_for_event(updated.event_id)
+        return FolderOut(
+            id=updated.id,
+            event_id=updated.event_id,
+            name=updated.name,
+            position=updated.position,
+            created_at=updated.created_at,
+            photo_count=counts.get(updated.id, 0),
+        )
+
+    def delete_folder(self, folder_id: uuid.UUID, cascade: bool = True) -> None:
+        """Delete a folder.
+
+        When cascade is True (default), also remove each photo's local WebP
+        thumbnail and its Google Drive original before deleting DB rows. The DB
+        cascade (ondelete=CASCADE) removes photo + face rows once the folder is
+        deleted, but external artifacts (disk, Drive) must be cleaned explicitly.
+        """
+        folder = self.folder_repo.get(folder_id)
+        if not folder:
+            raise HTTPException(status_code=404, detail="Folder not found.")
+
+        if cascade:
+            # Build cleanup services lazily so listing/renaming never needs Drive.
+            thumbnails = ThumbnailService()
+            storage = None
+            photos = self.photo_repo.all_for_folder(folder_id)
+            for photo in photos:
+                # Remove the local WebP thumbnail cache (best-effort).
+                thumbnails.delete(photo.id)
+                # Remove the Drive original (best-effort; don't block DB delete).
+                if photo.drive_original_id:
+                    try:
+                        if storage is None:
+                            from app.services.storage_service import StorageService
+
+                            storage = StorageService()
+                        storage.delete_file(photo.drive_original_id)
+                    except Exception:
+                        # Leave a Drive orphan rather than failing the whole delete.
+                        pass
+
+        # Deleting the folder cascades to photos + faces at the DB level.
         self.folder_repo.delete(folder)

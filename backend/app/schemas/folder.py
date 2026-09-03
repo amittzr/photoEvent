@@ -10,6 +10,10 @@ class FolderCreate(BaseModel):
     position: int = 0
 
 
+class FolderUpdate(BaseModel):
+    name: str = Field(min_length=1)
+
+
 class FolderOut(BaseModel):
     id: uuid.UUID
     event_id: uuid.UUID

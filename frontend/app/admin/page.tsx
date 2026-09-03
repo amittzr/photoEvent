@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import {
   adminCreateEvent,
   adminCreateFolder,
+  adminDeleteFolder,
   adminGetJob,
   adminListEvents,
+  adminRenameFolder,
   adminUploadPhotos,
   adminUploadZip,
   clearToken,
@@ -15,6 +17,7 @@ import {
   getToken,
 } from "@/lib/api";
 import type { EventBase, EventDetail, Folder, UploadJob } from "@/lib/types";
+import ShareEventModal from "@/components/ShareEventModal";
 
 // Admin dashboard: create events, add folders, bulk-upload photos.
 export default function AdminDashboard() {
@@ -37,6 +40,12 @@ export default function AdminDashboard() {
   // ZIP bulk-upload state.
   const [zipUploading, setZipUploading] = useState(false);
   const [job, setJob] = useState<UploadJob | null>(null);
+
+  // Folder edit/delete + share modal state.
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
+  const [editName, setEditName] = useState("");
+  const [deletingFolder, setDeletingFolder] = useState<Folder | null>(null);
+  const [showShare, setShowShare] = useState(false);
 
   // Redirect to login if there is no token.
   useEffect(() => {
@@ -138,6 +147,34 @@ export default function AdminDashboard() {
     return () => clearInterval(timer);
   }, [job, selected]);
 
+  function startEditFolder(folder: Folder) {
+    setEditingFolder(folder);
+    setEditName(folder.name);
+  }
+
+  async function onRenameFolder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingFolder) return;
+    try {
+      await adminRenameFolder(editingFolder.id, editName.trim());
+      setEditingFolder(null);
+      if (selected) await openEvent(selected.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rename folder.");
+    }
+  }
+
+  async function onConfirmDeleteFolder() {
+    if (!deletingFolder) return;
+    try {
+      await adminDeleteFolder(deletingFolder.id, true);
+      setDeletingFolder(null);
+      if (selected) await openEvent(selected.slug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete folder.");
+    }
+  }
+
   function logout() {
     clearToken();
     router.replace("/admin/login");
@@ -233,11 +270,20 @@ export default function AdminDashboard() {
             </p>
           ) : (
             <div className="space-y-6">
-              <div className="rounded-xl bg-white p-5 shadow-sm">
-                <h2 className="text-xl font-semibold">{selected.title}</h2>
-                <p className="text-sm text-neutral-500">
-                  Guest link: <code>/e/{selected.slug}</code>
-                </p>
+              <div className="flex items-center justify-between rounded-xl bg-white p-5 shadow-sm">
+                <div>
+                  <h2 className="text-xl font-semibold">{selected.title}</h2>
+                  <p className="text-sm text-neutral-500">
+                    Guest link: <code>/e/{selected.slug}</code>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowShare(true)}
+                  className="whitespace-nowrap rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark"
+                >
+                  Share Event / הפק קישור ו-QR
+                </button>
               </div>
 
               <div className="rounded-xl bg-white p-5 shadow-sm">
@@ -246,10 +292,32 @@ export default function AdminDashboard() {
                   {selected.folders.map((f: Folder) => (
                     <li
                       key={f.id}
-                      className="rounded-full bg-neutral-100 px-3 py-1 text-sm"
+                      className="flex items-center gap-2 rounded-full bg-neutral-100 px-3 py-1 text-sm"
                     >
-                      {f.name}{" "}
-                      <span className="text-neutral-400">({f.photo_count})</span>
+                      <span>
+                        {f.name}{" "}
+                        <span className="text-neutral-400">
+                          ({f.photo_count})
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => startEditFolder(f)}
+                        className="text-neutral-500 hover:text-brand"
+                        aria-label={`Rename ${f.name}`}
+                        title="Rename"
+                      >
+                        ✏️
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeletingFolder(f)}
+                        className="text-neutral-500 hover:text-red-600"
+                        aria-label={`Delete ${f.name}`}
+                        title="Delete"
+                      >
+                        🗑️
+                      </button>
                     </li>
                   ))}
                   {selected.folders.length === 0 && (
@@ -368,6 +436,90 @@ export default function AdminDashboard() {
           )}
         </section>
       </div>
+
+      {/* Rename folder modal. */}
+      {editingFolder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setEditingFolder(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <form
+            onSubmit={onRenameFolder}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h2 className="text-lg font-semibold">Rename folder</h2>
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm"
+              required
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingFolder(null)}
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Delete folder confirmation modal. */}
+      {deletingFolder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeletingFolder(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-6 shadow-xl"
+          >
+            <h2 className="text-lg font-semibold text-red-600">Delete folder</h2>
+            <p className="text-sm text-neutral-600">
+              Delete <strong>{deletingFolder.name}</strong> and all{" "}
+              <strong>{deletingFolder.photo_count}</strong> photo(s) inside it?
+              This removes the photos, their thumbnails, face data, and the
+              originals from Google Drive. This can&apos;t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeletingFolder(null)}
+                className="rounded-lg border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmDeleteFolder}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share event modal (guest link + QR). */}
+      {showShare && selected && (
+        <ShareEventModal event={selected} onClose={() => setShowShare(false)} />
+      )}
     </main>
   );
 }

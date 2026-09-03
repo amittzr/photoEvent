@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, status
 
 from app.deps import AdminDep, get_event_service
 from app.schemas.event import EventCreate, EventOut, EventUpdate
-from app.schemas.folder import FolderCreate, FolderOut
+from app.schemas.folder import FolderCreate, FolderOut, FolderUpdate
 from app.services.event_service import EventService
 
 router = APIRouter(prefix="/api/admin", tags=["admin:events"])
@@ -55,6 +55,27 @@ def create_folder(
     return service.create_folder(event_id, body)
 
 
+@router.patch("/folders/{folder_id}", response_model=FolderOut)
+def rename_folder(
+    _: AdminDep,
+    folder_id: uuid.UUID,
+    body: FolderUpdate,
+    service: EventServiceDep,
+) -> FolderOut:
+    """Rename a folder; the new label propagates to all API responses."""
+    return service.rename_folder(folder_id, body)
+
+
 @router.delete("/folders/{folder_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_folder(_: AdminDep, folder_id: uuid.UUID, service: EventServiceDep) -> None:
-    service.delete_folder(folder_id)
+def delete_folder(
+    _: AdminDep,
+    folder_id: uuid.UUID,
+    service: EventServiceDep,
+    cascade: bool = True,
+) -> None:
+    """Delete a folder.
+
+    With cascade=true (default), also removes the folder's photos, their local
+    WebP thumbnails, face embeddings, and Google Drive originals.
+    """
+    service.delete_folder(folder_id, cascade=cascade)

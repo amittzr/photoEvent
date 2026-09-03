@@ -60,7 +60,11 @@ AdminDep = Annotated[str, Depends(get_current_admin)]
 
 # --- Per-request services (need a DB session) ---
 def get_event_service(session: SessionDep) -> EventService:
-    return EventService(EventRepository(session), FolderRepository(session))
+    return EventService(
+        EventRepository(session),
+        FolderRepository(session),
+        PhotoRepository(session),
+    )
 
 
 def get_upload_service(

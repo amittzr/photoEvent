@@ -39,6 +39,11 @@ class PhotoRepository:
         stmt = select(Photo).where(Photo.id.in_(photo_ids))
         return list(self.session.exec(stmt))
 
+    def all_for_folder(self, folder_id: uuid.UUID) -> list[Photo]:
+        """Return every photo in a folder (unpaginated), for cleanup tasks."""
+        stmt = select(Photo).where(Photo.folder_id == folder_id)
+        return list(self.session.exec(stmt))
+
     def set_status(self, photo_id: uuid.UUID, status: PhotoStatus) -> None:
         photo = self.session.get(Photo, photo_id)
         if photo:
