@@ -53,12 +53,11 @@ def process_drive_zip_job(
     zip_path = os.path.join(work_dir, "upload.zip")
     try:
         os.makedirs(work_dir, exist_ok=True)
-        log.info("[drive_zip job=%s] downloading from Drive...", job_id)
+        log.info("[drive_zip job=%s] streaming download from Drive to disk...", job_id)
         storage = StorageService()
-        zip_bytes = storage.get_file_stream(drive_file_id)
-        with open(zip_path, "wb") as fh:
-            fh.write(zip_bytes)
-        log.info("[drive_zip job=%s] downloaded %d bytes", job_id, len(zip_bytes))
+        # Stream directly to disk in 8MB chunks — never loads the full ZIP into RAM.
+        size = storage.download_to_file(drive_file_id, zip_path)
+        log.info("[drive_zip job=%s] downloaded %d bytes to %s", job_id, size, zip_path)
     except Exception as exc:
         log.exception("[drive_zip job=%s] download failed: %s", job_id, exc)
         with Session(engine) as session:

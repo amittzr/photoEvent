@@ -309,7 +309,7 @@ class StorageService:
         return self.get_public_url(file_id)
 
     def get_file_stream(self, file_id: str) -> bytes:
-        """Download a Drive file's bytes."""
+        """Download a Drive file's bytes (small files only — loads fully into RAM)."""
         request = self._get_service().files().get_media(
             fileId=file_id, supportsAllDrives=True
         )
@@ -322,6 +322,24 @@ class StorageService:
         except HttpError as exc:
             raise _wrap_http_error(exc, "download file") from exc
         return buffer.getvalue()
+
+    def download_to_file(self, file_id: str, dest_path: str) -> int:
+        """Stream a Drive file directly to disk in chunks — safe for large files.
+
+        Returns the number of bytes written. Never loads the full file into RAM.
+        """
+        request = self._get_service().files().get_media(
+            fileId=file_id, supportsAllDrives=True
+        )
+        try:
+            with open(dest_path, "wb") as fh:
+                downloader = MediaIoBaseDownload(fh, request, chunksize=8 * 1024 * 1024)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+        except HttpError as exc:
+            raise _wrap_http_error(exc, "download file to disk") from exc
+        return os.path.getsize(dest_path)
 
     # Backwards-compatible alias used by existing callers.
     def download_bytes(self, file_id: str) -> bytes:
